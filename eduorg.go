@@ -1,38 +1,70 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/exec"
 	"slices"
+	"strconv"
 
 	"github.com/kremec/edugroup/internal/dialogs"
 	"github.com/kremec/edugroup/internal/excel"
 	"github.com/kremec/edugroup/internal/types"
 )
 
-var DEBUG bool = false
+var DEBUG bool = true
 
 func main() {
+
+	numGroups := -1
+
+	// Parse command line arguments
+	args := os.Args[1:]
+	if len(args) > 0 {
+		argNumGroups, err := strconv.Atoi(args[0])
+		if err != nil {
+			dialogs.ShowErrorDialog(errors.New("Invalid number of groups"))
+			return
+		}
+		numGroups = argNumGroups
+	}
 
 	// Open Excel file
 	inputFile, err := dialogs.OpenExcelFile()
 	if err != nil {
 		dialogs.ShowErrorDialog(err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Input file:", inputFile)
-
-	// Read Excel file
-	data, err := excel.ReadExcelData(inputFile)
-	if err != nil {
-		dialogs.ShowErrorDialog(err)
 		return
 	}
+	if DEBUG {
+		fmt.Println("Input file:", inputFile)
+	}
 
-	// Create student groups based on the data
-	groups := createGroups(data)
+	var groups [][]string
+	if numGroups == -1 {
+
+		// Read Excel file
+		data, err := excel.ReadExcelSubjectGroups(inputFile)
+		if err != nil {
+			dialogs.ShowErrorDialog(err)
+			return
+		}
+
+		// Create student groups based on subjects and exclusions
+		groups = createSubjectGroups(data)
+	} else {
+
+		// Read Excel file
+		data, err := excel.ReadExcelNumGroups(inputFile)
+		if err != nil {
+			dialogs.ShowErrorDialog(err)
+			return
+		}
+
+		// Create student groups based on number of groups
+		groups = createNumGroups(data, numGroups)
+	}
 
 	// Export the groups to Excel file
 	outputFile, err := dialogs.SaveExcelFile(inputFile)
@@ -40,11 +72,22 @@ func main() {
 		dialogs.ShowErrorDialog(err)
 		return
 	}
+	if DEBUG {
+		fmt.Println("Output file:", outputFile)
+	}
 	excel.ExportToExcel(groups, outputFile)
+
+	// Open Excel file
+	cmd := exec.Command("cmd", "/c", "start", outputFile)
+	err = cmd.Start()
+	if err != nil {
+		dialogs.ShowErrorDialog(err)
+		return
+	}
 }
 
 // CreateGroups creates student groups based on the subjects and exclusions data.
-func createGroups(data *types.GroupingData) [][]string {
+func createSubjectGroups(data *types.GroupingData) [][]string {
 	groups := [][]string{}
 
 	// Shuffle exclusion groups for randomness
@@ -138,6 +181,29 @@ func createGroups(data *types.GroupingData) [][]string {
 				fmt.Println()
 			}
 		}
+	}
+
+	if DEBUG {
+		fmt.Println("Final groups:", groups)
+	}
+
+	return groups
+}
+
+// CreateGroups creates student groups based on the number of groups.
+func createNumGroups(students []string, numGroups int) [][]string {
+	groups := [][]string{}
+
+	rand.Shuffle(len(students), func(i, j int) { students[i], students[j] = students[j], students[i] })
+
+	// Create groups
+	for i := 0; i < numGroups; i++ {
+		groups = append(groups, []string{})
+	}
+
+	// Add students to groups
+	for i, student := range students {
+		groups[i%numGroups] = append(groups[i%numGroups], student)
 	}
 
 	if DEBUG {

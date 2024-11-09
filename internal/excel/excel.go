@@ -16,8 +16,8 @@ const (
 	groupsSheetName     = "Groups"
 )
 
-// ReadExcelData loads the data from the specified Excel file.
-func ReadExcelData(filename string) (*types.GroupingData, error) {
+// ReadExcelSubjectGroups loads the data from the specified Excel file.
+func ReadExcelSubjectGroups(filename string) (*types.GroupingData, error) {
 	f, err := excelize.OpenFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errOpeningExcelFile, err, errNotifyDeveloper)
@@ -79,6 +79,21 @@ func getExclusions(f *excelize.File) ([][]string, error) {
 	}
 
 	return columns, nil
+}
+
+func ReadExcelNumGroups(filename string) ([]string, error) {
+	f, err := excelize.OpenFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s\n%s", errOpeningExcelFile, err, errNotifyDeveloper)
+	}
+	defer f.Close()
+
+	cols, err := f.GetCols(f.GetSheetName(0))
+	if err != nil {
+		return nil, fmt.Errorf("%s %s\n%s", errParsingExcelFile, err, errNotifyDeveloper)
+	}
+
+	return cols[0], nil
 }
 
 // ExportToExcel exports the groups to an Excel file.
