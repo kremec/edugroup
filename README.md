@@ -22,7 +22,9 @@ Excel format - groupng by number of total groups:
 - First sheet: one long column of student names starting in top left corner (cell A1)
 - Second sheet: (same as above)
 
-Names of sheets are not important.
+Names of sheets are not important, only ordering matters.
+
+Examples of Excel input and output files can be found in `/examples`.
 
 ### Output
 
