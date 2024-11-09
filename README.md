@@ -1,14 +1,19 @@
 # EduGroup
 
 This program is designed to take a list of students and grouping them:
-- by students' subject groups
-- by number of total groups
+- by students' **subject groups**
+- by **number of total groups**
 
-Both ways of grouping support defining exceptions for students who cannot work together.
+Both ways of grouping support defining **exceptions** for students who cannot work together.
 
 ## Usage
 
 Start the program by running the .exe from Releases.
+
+The program defaults to grouping by subject groups. If you wish to run the program in *number of total groups* mode, you need to pass the number of total groups as a command paramater.\
+You can do that by either:
+- running the `.exe` file in terminal: `.\edugroup.exe <NUM-OF-TOTAL-GROUPS>`
+- creating a program shortcut and changing it's "Target" field: `<PATH-TO-PROGRAM.exe> <NUM-OF-TOTAL-GROUPS>`
 
 ### Input
 
