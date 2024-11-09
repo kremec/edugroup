@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/kremec/edugroup/internal/types"
 
@@ -81,36 +82,59 @@ func getExclusions(f *excelize.File) ([][]string, error) {
 	return columns, nil
 }
 
-func ReadExcelNumGroups(filename string) ([]string, error) {
+func ReadExcelNumGroups(filename string) (*types.GroupingData, error) {
 	f, err := excelize.OpenFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errOpeningExcelFile, err, errNotifyDeveloper)
 	}
 	defer f.Close()
 
-	cols, err := f.GetCols(f.GetSheetName(0))
+	students, err := getStudents(f)
+	if err != nil {
+		return nil, err
+	}
+
+	exclusions, err := getExclusions(f)
+	if err != nil {
+		return nil, err
+	}
+
+	data := &types.GroupingData{
+		Students:   students,
+		Exclusions: exclusions,
+	}
+
+	return data, nil
+}
+
+func getStudents(f *excelize.File) ([]string, error) {
+	columns, err := f.GetCols(f.GetSheetName(0))
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errParsingExcelFile, err, errNotifyDeveloper)
 	}
 
-	return cols[0], nil
+	return columns[0], nil
 }
 
 // ExportToExcel exports the groups to an Excel file.
 func ExportToExcel(groups [][]string, filename string) error {
 	f := excelize.NewFile()
-	sheet, err := f.NewSheet(groupsSheetName)
+	defer f.Close()
+
+	err := f.SetSheetName(f.GetSheetName(0), groupsSheetName)
 	if err != nil {
 		return fmt.Errorf("%s %s\n%s", errOpeningExcelFile, err, errNotifyDeveloper)
 	}
 
 	for i, group := range groups {
+		cell := fmt.Sprintf("%c%d", 'A', i+1)
+		f.SetCellValue(groupsSheetName, cell, "Group "+strconv.Itoa(i+1))
 		for j, student := range group {
-			cell := fmt.Sprintf("%c%d", 'A'+j, i+1)
+			cell := fmt.Sprintf("%c%d", 'A'+j+1, i+1)
 			f.SetCellValue(groupsSheetName, cell, student)
 		}
 	}
-	f.SetActiveSheet(sheet)
+	f.SetActiveSheet(0)
 
 	err = f.SaveAs(filename)
 	if err != nil {

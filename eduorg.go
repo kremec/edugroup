@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/kremec/edugroup/internal/dialogs"
@@ -191,19 +192,78 @@ func createSubjectGroups(data *types.GroupingData) [][]string {
 }
 
 // CreateGroups creates student groups based on the number of groups.
-func createNumGroups(students []string, numGroups int) [][]string {
-	groups := [][]string{}
+func createNumGroups(data *types.GroupingData, numGroups int) [][]string {
+	groups := make([][]string, numGroups)
 
-	rand.Shuffle(len(students), func(i, j int) { students[i], students[j] = students[j], students[i] })
-
-	// Create groups
-	for i := 0; i < numGroups; i++ {
-		groups = append(groups, []string{})
+	// Shuffle exclusion groups for randomness
+	for _, exclusionGroup := range data.Exclusions {
+		rand.Shuffle(len(exclusionGroup), func(i, j int) { exclusionGroup[i], exclusionGroup[j] = exclusionGroup[j], exclusionGroup[i] })
 	}
 
-	// Add students to groups
-	for i, student := range students {
-		groups[i%numGroups] = append(groups[i%numGroups], student)
+	// Shuffle students for randomness
+	rand.Shuffle(len(data.Students), func(i, j int) { data.Students[i], data.Students[j] = data.Students[j], data.Students[i] })
+
+	canAddToGroup := func(student string, group []string) bool {
+		for _, studentInGroup := range group {
+			// Dissallow students from same exclusion group
+			for _, exclusionGroup := range data.Exclusions {
+				if slices.Contains(exclusionGroup, studentInGroup) && slices.Contains(exclusionGroup, student) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	processStudent := func(student string) {
+
+		// Add student to existing groups if possible
+		sort.Slice(groups, func(i, j int) bool {
+			return len(groups[i]) < len(groups[j])
+		})
+		foundGroupToAddTo := false
+		for groupIndex, group := range groups {
+			if canAddToGroup(student, group) {
+				foundGroupToAddTo = true
+				if DEBUG {
+					fmt.Printf("Adding %s to group %s\n", student, group)
+				}
+				groups[groupIndex] = append(group, student)
+				return
+			}
+		}
+		if !foundGroupToAddTo {
+			dialogs.ShowErrorDialog(errors.New("Exception constraints cannot be met for this number of groups"))
+			os.Exit(0)
+		}
+	}
+
+	// Process exclusions first
+	for _, exclusions := range data.Exclusions {
+		for _, student := range exclusions {
+			if DEBUG {
+				fmt.Printf("Processing exclusion: %s\n", student)
+			}
+			processStudent(student)
+			if DEBUG {
+				fmt.Println("Current groups:", groups)
+				fmt.Println()
+			}
+
+			// Remove the student from SubjectStudents
+			data.Students = slices.DeleteFunc(data.Students, func(s string) bool { return s == student })
+		}
+	}
+
+	// Process remaining students
+	for _, student := range data.Students {
+		if DEBUG {
+			fmt.Printf("Processing: %s\n", student)
+		}
+		processStudent(student)
+		if DEBUG {
+			fmt.Println("Current groups:", groups)
+			fmt.Println()
+		}
 	}
 
 	if DEBUG {
