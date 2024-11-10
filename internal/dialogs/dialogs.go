@@ -1,6 +1,8 @@
 package dialogs
 
 import (
+	"strings"
+
 	"github.com/sqweek/dialog"
 )
 
@@ -12,6 +14,10 @@ func OpenExcelFile() (string, error) {
 
 func SaveExcelFile(filename string) (string, error) {
 	filename, err := dialog.File().Title("Save Excel file").Filter("Excel files", "xlsx").Filter("All files", "*").Save()
+
+	if !strings.HasSuffix(filename, ".xlsx") {
+		filename += ".xlsx"
+	}
 
 	return filename, err
 }
