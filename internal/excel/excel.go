@@ -74,6 +74,11 @@ func getSubjectsStudents(f *excelize.File) (map[string][]string, error) {
 // Read exclusions from the 2nd sheet of Excel file
 func getExclusions(f *excelize.File) ([][]string, error) {
 
+	// If there is no 2nd sheet assume no exlusions
+	if f.GetSheetName(1) == "" {
+		return make([][]string, 0), nil
+	}
+
 	columns, err := f.GetCols(f.GetSheetName(1))
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errParsingExcelFile, err, errNotifyDeveloper)

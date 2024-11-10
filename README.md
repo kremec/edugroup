@@ -28,6 +28,7 @@ Excel format - groupng by number of total groups:
 - Second sheet: (same as above)
 
 Names of sheets are not important, only ordering matters.
+Second sheet is optional, if not provided the program assumes no exceptions.
 
 Examples of Excel input and output files can be found in `/examples`.
 
