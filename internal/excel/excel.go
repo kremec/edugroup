@@ -10,11 +10,12 @@ import (
 )
 
 const (
-	errNotifyDeveloper  = "Please notify the developer of this error!"
-	errOpeningExcelFile = "Error opening Excel file:"
-	errParsingExcelFile = "Error reading data from Excel file:"
-	errSavingExcelFile  = "Error saving Excel file:"
-	groupsSheetName     = "Groups"
+	errNotifyDeveloper     = "Please notify the developer of this error!"
+	errOpeningExcelFile    = "Error opening Excel file:"
+	errNoSheetsInExcelFile = "No sheets found in Excel file, make sure to create at least one sheet and fill it with student data!"
+	errParsingExcelFile    = "Error reading data from Excel file:"
+	errSavingExcelFile     = "Error saving Excel file:"
+	groupsSheetName        = "Groups"
 )
 
 // ReadExcelSubjectGroups loads the data from the specified Excel file.
@@ -46,6 +47,11 @@ func ReadExcelSubjectGroups(filename string) (*types.GroupingData, error) {
 // Read subjects and their students from the 1st sheet of Excel file
 func getSubjectsStudents(f *excelize.File) (map[string][]string, error) {
 	subjectStudents := make(map[string][]string)
+
+	// If there is no 1st sheet, throw an error
+	if f.GetSheetName(0) == "" {
+		return nil, fmt.Errorf("%s", errNoSheetsInExcelFile)
+	}
 
 	rows, err := f.GetRows(f.GetSheetName(0))
 	if err != nil {
@@ -113,6 +119,12 @@ func ReadExcelNumGroups(filename string) (*types.GroupingData, error) {
 }
 
 func getStudents(f *excelize.File) ([]string, error) {
+
+	// If there is no 1st sheet, throw an error
+	if f.GetSheetName(0) == "" {
+		return nil, fmt.Errorf("%s", errNoSheetsInExcelFile)
+	}
+
 	columns, err := f.GetCols(f.GetSheetName(0))
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errParsingExcelFile, err, errNotifyDeveloper)
