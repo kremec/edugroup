@@ -10,14 +10,17 @@ Both ways of grouping support defining **exceptions** for students who cannot wo
 
 Start the program by running the .exe from Releases.
 
-The program defaults to grouping by subject groups. If you wish to run the program in *number of total groups* mode, you need to pass the number of total groups as a command paramater.\
-You can do that by either:
-- running the `.exe` file in terminal: `.\edugroup.exe <NUM-OF-TOTAL-GROUPS>`
-- creating a program shortcut and changing it's "Target" field: `<PATH-TO-PROGRAM.exe> <NUM-OF-TOTAL-GROUPS>`
+The program asks the user to select the grouping mode:
+- 0\) Group students by subject groups
+- n\) Group students into 'n' groups
+
+IF the user inputs '0' and then ENTER, the program will group the students by subject groups.
+
+IF the user inputs any other number and then ENTER, the program will group the students into given number of groups.
 
 ### Input
 
-The program will display a file dialog to select the Excel file with student data to use.
+After the mode selection, the program will display a file dialog to select the Excel file with student data to use.
 
 Excel format - grouping by subject groups:
 - First sheet: subject names as column headers in 1st row of sheet, below each is a column of student names from given subject group

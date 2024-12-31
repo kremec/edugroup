@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -9,82 +10,126 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/kremec/edugroup/internal/dialogs"
 	"github.com/kremec/edugroup/internal/excel"
 	"github.com/kremec/edugroup/internal/types"
 )
 
-var DEBUG bool = true
+const (
+	redText   = "\033[31m"
+	resetText = "\033[0m"
+)
+
+var DEBUG bool = false
 
 func main() {
-
-	numGroups := -1
-
 	// Parse command line arguments
 	args := os.Args[1:]
 	if len(args) > 0 {
-		argNumGroups, err := strconv.Atoi(args[0])
-		if err != nil {
-			dialogs.ShowErrorDialog(errors.New("Invalid number of groups"))
+		if args[0] == "-debug" {
+			DEBUG = true
+			args = args[1:]
+		}
+	}
+
+	fmt.Println("Welcome to EduGroup!")
+	for {
+		// Give user instructions
+		fmt.Println("Available grouping modes:")
+		fmt.Printf("0) %s\n", "Group students by subject groups")
+		fmt.Printf("n) %s\n", "Group students into 'n' groups")
+		fmt.Println("<ENTER>) Exit")
+		fmt.Print("Enter your choice: ")
+
+		// Read user input
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input) // Remove any leading/trailing whitespace
+
+		// Exit if user presses ENTER
+		if input == "" {
+			fmt.Println("Exiting the program.")
 			return
 		}
-		numGroups = argNumGroups
-	}
 
-	// Open Excel file
-	inputFile, err := dialogs.OpenExcelFile()
-	if err != nil {
-		dialogs.ShowErrorDialog(err)
-		return
-	}
-	if DEBUG {
-		fmt.Println("Input file:", inputFile)
-	}
+		groupMode, err := strconv.Atoi(input)
+		if err != nil || groupMode < 0 {
+			fmt.Printf("%sInvalid input. Please enter 0, a positive integer, or press ENTER to exit.%s\n", redText, resetText)
+			restartProgramDelimiter()
+			continue
+		}
 
-	var groups [][]string
-	if numGroups == -1 {
-
-		// Read Excel file
-		data, err := excel.ReadExcelSubjectGroups(inputFile)
+		// Open Excel file
+		inputFile, err := dialogs.OpenExcelFile()
 		if err != nil {
 			dialogs.ShowErrorDialog(err)
-			return
+			restartProgramDelimiter()
+			continue
+		}
+		if DEBUG {
+			fmt.Println("Input file:", inputFile)
 		}
 
-		// Create student groups based on subjects and exclusions
-		groups = createSubjectGroups(data)
-	} else {
+		var groups [][]string
+		if groupMode == 0 {
+			// Read Excel file
+			data, err := excel.ReadExcelSubjectGroups(inputFile)
+			if err != nil {
+				dialogs.ShowErrorDialog(err)
+				restartProgramDelimiter()
+				continue
+			}
 
-		// Read Excel file
-		data, err := excel.ReadExcelNumGroups(inputFile)
+			// Create student groups based on subjects and exclusions
+			groups = createSubjectGroups(data)
+		} else {
+			numGroups := groupMode
+			// Read Excel file
+			data, err := excel.ReadExcelNumGroups(inputFile)
+			if err != nil {
+				dialogs.ShowErrorDialog(err)
+				restartProgramDelimiter()
+				continue
+			}
+
+			// Create student groups based on number of groups
+			groups = createNumGroups(data, numGroups)
+		}
+
+		fmt.Printf("\nGrouping successful - %d groups created.\n", len(groups))
+
+		// Export the groups to Excel file
+		outputFile, err := dialogs.SaveExcelFile(inputFile)
 		if err != nil {
 			dialogs.ShowErrorDialog(err)
-			return
+			restartProgramDelimiter()
+			continue
 		}
+		if DEBUG {
+			fmt.Println("Output file:", outputFile)
+		}
+		excel.ExportToExcel(groups, outputFile)
 
-		// Create student groups based on number of groups
-		groups = createNumGroups(data, numGroups)
-	}
+		fmt.Println("Groups exported to", outputFile)
 
-	// Export the groups to Excel file
-	outputFile, err := dialogs.SaveExcelFile(inputFile)
-	if err != nil {
-		dialogs.ShowErrorDialog(err)
-		return
+		// Open Excel file
+		cmd := exec.Command("cmd", "/c", "start", outputFile)
+		err = cmd.Start()
+		if err != nil {
+			dialogs.ShowErrorDialog(err)
+			restartProgramDelimiter()
+			continue
+		}
+		restartProgramDelimiter()
 	}
-	if DEBUG {
-		fmt.Println("Output file:", outputFile)
-	}
-	excel.ExportToExcel(groups, outputFile)
+}
 
-	// Open Excel file
-	cmd := exec.Command("cmd", "/c", "start", outputFile)
-	err = cmd.Start()
-	if err != nil {
-		dialogs.ShowErrorDialog(err)
-		return
-	}
+func restartProgramDelimiter() {
+	fmt.Println()
+	fmt.Println(" - - - - - ")
+	fmt.Println()
 }
 
 // CreateGroups creates student groups based on the subjects and exclusions data.
