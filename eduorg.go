@@ -83,7 +83,12 @@ func main() {
 			}
 
 			// Create student groups based on subjects and exclusions
-			groups = createSubjectGroups(data)
+			groups, err = createSubjectGroups(data)
+			if err != nil {
+				dialogs.ShowErrorDialog(err)
+				restartProgramDelimiter()
+				continue
+			}
 		} else {
 			numGroups := groupMode
 			// Read Excel file
@@ -95,7 +100,12 @@ func main() {
 			}
 
 			// Create student groups based on number of groups
-			groups = createNumGroups(data, numGroups)
+			groups, err = createNumGroups(data, numGroups)
+			if err != nil {
+				dialogs.ShowErrorDialog(err)
+				restartProgramDelimiter()
+				continue
+			}
 		}
 
 		fmt.Printf("\nGrouping successful - %d groups created.\n", len(groups))
@@ -133,20 +143,13 @@ func restartProgramDelimiter() {
 }
 
 // CreateGroups creates student groups based on the subjects and exclusions data.
-func createSubjectGroups(data *types.GroupingData) [][]string {
+func createSubjectGroups(data *types.GroupingData) ([][]string, error) {
 	groups := [][]string{}
-
-	// Shuffle exclusion groups for randomness
-	for _, exclusionGroup := range data.Exclusions {
-		rand.Shuffle(len(exclusionGroup), func(i, j int) { exclusionGroup[i], exclusionGroup[j] = exclusionGroup[j], exclusionGroup[i] })
-	}
+	exclusionLookup := buildExclusionLookup(data.Exclusions)
 
 	// Map students to corresponding subjects
 	studentSubject := make(map[string]string)
 	for subject, students := range data.SubjectStudents {
-		// Shuffle students for randomness
-		rand.Shuffle(len(students), func(i, j int) { students[i], students[j] = students[j], students[i] })
-
 		for _, student := range students {
 			if student != "" {
 				studentSubject[student] = subject
@@ -154,157 +157,54 @@ func createSubjectGroups(data *types.GroupingData) [][]string {
 		}
 	}
 
-	canAddToGroup := func(student string, group []string) bool {
-		for _, studentInGroup := range group {
-			// Dissallow students from the same subject
-			if studentSubject[studentInGroup] == studentSubject[student] {
-				return false
-			}
+	if err := validateSubjectInclusions(data.Inclusions, studentSubject, exclusionLookup); err != nil {
+		return nil, err
+	}
 
-			// Dissallow students from same exclusion group
-			for _, exclusionGroup := range data.Exclusions {
-				if slices.Contains(exclusionGroup, studentInGroup) && slices.Contains(exclusionGroup, student) {
+	allStudents := flattenSubjectStudentsBySubject(data.SubjectStudents)
+	units := buildAssignmentUnits(allStudents, data.Inclusions, exclusionLookup)
+
+	canAddUnitToGroup := func(unit []string, group []string) bool {
+		for _, student := range unit {
+			for _, studentInGroup := range group {
+				// Dissallow students from the same subject
+				if studentSubject[studentInGroup] == studentSubject[student] {
+					return false
+				}
+
+				if studentsConflict(student, studentInGroup, exclusionLookup) {
 					return false
 				}
 			}
 		}
 		return true
 	}
-	processStudent := func(student string) {
 
-		subject := studentSubject[student]
-		if subject == "" {
-			return
-		}
-
+	processUnit := func(unit []string) {
 		// Add student to existing groups if possible
 		for groupIndex, group := range groups {
-			if canAddToGroup(student, group) {
+			if canAddUnitToGroup(unit, group) {
 				if DEBUG {
-					fmt.Printf("Adding %s to group %s\n", student, group)
+					fmt.Printf("Adding %v to group %s\n", unit, group)
 				}
-				groups[groupIndex] = append(group, student)
+				groups[groupIndex] = append(group, unit...)
 				return
 			}
 		}
 
 		// Else create a new group
 		if DEBUG {
-			fmt.Printf("Creating new group for %s\n", student)
+			fmt.Printf("Creating new group for %v\n", unit)
 		}
-		groups = append(groups, []string{student})
+		groups = append(groups, slices.Clone(unit))
 	}
 
-	// Process exclusions first
-	for _, exclusions := range data.Exclusions {
-		for _, student := range exclusions {
-			if DEBUG {
-				fmt.Printf("Processing exclusion: %s\n", student)
-			}
-			processStudent(student)
-			if DEBUG {
-				fmt.Println("Current groups:", groups)
-				fmt.Println()
-			}
-
-			// Remove the student from SubjectStudents
-			for subject, students := range data.SubjectStudents {
-				students = slices.DeleteFunc(students, func(s string) bool { return s == student })
-				data.SubjectStudents[subject] = students
-			}
-		}
-	}
-
-	// Process remaining students
-	for _, students := range data.SubjectStudents {
-		for _, student := range students {
-			if DEBUG {
-				fmt.Printf("Processing: %s\n", student)
-			}
-			processStudent(student)
-			if DEBUG {
-				fmt.Println("Current groups:", groups)
-				fmt.Println()
-			}
-		}
-	}
-
-	if DEBUG {
-		fmt.Println("Final groups:", groups)
-	}
-
-	return groups
-}
-
-// CreateGroups creates student groups based on the number of groups.
-func createNumGroups(data *types.GroupingData, numGroups int) [][]string {
-	groups := make([][]string, numGroups)
-
-	// Shuffle exclusion groups for randomness
-	for _, exclusionGroup := range data.Exclusions {
-		rand.Shuffle(len(exclusionGroup), func(i, j int) { exclusionGroup[i], exclusionGroup[j] = exclusionGroup[j], exclusionGroup[i] })
-	}
-
-	// Shuffle students for randomness
-	rand.Shuffle(len(data.Students), func(i, j int) { data.Students[i], data.Students[j] = data.Students[j], data.Students[i] })
-
-	canAddToGroup := func(student string, group []string) bool {
-		for _, studentInGroup := range group {
-			// Dissallow students from same exclusion group
-			for _, exclusionGroup := range data.Exclusions {
-				if slices.Contains(exclusionGroup, studentInGroup) && slices.Contains(exclusionGroup, student) {
-					return false
-				}
-			}
-		}
-		return true
-	}
-	processStudent := func(student string) {
-
-		// Add student to existing groups if possible
-		sort.Slice(groups, func(i, j int) bool {
-			return len(groups[i]) < len(groups[j])
-		})
-		foundGroupToAddTo := false
-		for groupIndex, group := range groups {
-			if canAddToGroup(student, group) {
-				foundGroupToAddTo = true
-				if DEBUG {
-					fmt.Printf("Adding %s to group %s\n", student, group)
-				}
-				groups[groupIndex] = append(group, student)
-				return
-			}
-		}
-		if !foundGroupToAddTo {
-			dialogs.ShowErrorDialog(errors.New("Exception constraints cannot be met for this number of groups"))
-			os.Exit(0)
-		}
-	}
-
-	// Process exclusions first
-	for _, exclusions := range data.Exclusions {
-		for _, student := range exclusions {
-			if DEBUG {
-				fmt.Printf("Processing exclusion: %s\n", student)
-			}
-			processStudent(student)
-			if DEBUG {
-				fmt.Println("Current groups:", groups)
-				fmt.Println()
-			}
-
-			// Remove the student from SubjectStudents
-			data.Students = slices.DeleteFunc(data.Students, func(s string) bool { return s == student })
-		}
-	}
-
-	// Process remaining students
-	for _, student := range data.Students {
+	// Process inclusion groups and constrained students first
+	for _, unit := range units {
 		if DEBUG {
-			fmt.Printf("Processing: %s\n", student)
+			fmt.Printf("Processing: %v\n", unit)
 		}
-		processStudent(student)
+		processUnit(unit)
 		if DEBUG {
 			fmt.Println("Current groups:", groups)
 			fmt.Println()
@@ -315,5 +215,184 @@ func createNumGroups(data *types.GroupingData, numGroups int) [][]string {
 		fmt.Println("Final groups:", groups)
 	}
 
-	return groups
+	return groups, nil
+}
+
+// CreateGroups creates student groups based on the number of groups.
+func createNumGroups(data *types.GroupingData, numGroups int) ([][]string, error) {
+	groups := make([][]string, numGroups)
+	exclusionLookup := buildExclusionLookup(data.Exclusions)
+
+	if err := validateInclusionsAgainstExclusions(data.Inclusions, exclusionLookup); err != nil {
+		return nil, err
+	}
+
+	units := buildAssignmentUnits(data.Students, data.Inclusions, exclusionLookup)
+
+	canAddUnitToGroup := func(unit []string, group []string) bool {
+		for _, student := range unit {
+			for _, studentInGroup := range group {
+				if studentsConflict(student, studentInGroup, exclusionLookup) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	processUnit := func(unit []string) error {
+
+		// Add student to existing groups if possible
+		sort.Slice(groups, func(i, j int) bool {
+			return len(groups[i]) < len(groups[j])
+		})
+		for groupIndex, group := range groups {
+			if canAddUnitToGroup(unit, group) {
+				if DEBUG {
+					fmt.Printf("Adding %v to group %s\n", unit, group)
+				}
+				groups[groupIndex] = append(group, unit...)
+				return nil
+			}
+		}
+		return errors.New("exception and inclusion constraints cannot be met for this number of groups")
+	}
+
+	// Process inclusion groups and constrained students first
+	for _, unit := range units {
+		if DEBUG {
+			fmt.Printf("Processing: %v\n", unit)
+		}
+		if err := processUnit(unit); err != nil {
+			return nil, err
+		}
+		if DEBUG {
+			fmt.Println("Current groups:", groups)
+			fmt.Println()
+		}
+	}
+
+	if DEBUG {
+		fmt.Println("Final groups:", groups)
+	}
+
+	return groups, nil
+}
+
+func buildExclusionLookup(exclusions [][]string) map[string]map[string]struct{} {
+	lookup := make(map[string]map[string]struct{})
+
+	for _, exclusionGroup := range exclusions {
+		for _, student := range exclusionGroup {
+			if lookup[student] == nil {
+				lookup[student] = make(map[string]struct{})
+			}
+
+			for _, otherStudent := range exclusionGroup {
+				if otherStudent == student {
+					continue
+				}
+				lookup[student][otherStudent] = struct{}{}
+			}
+		}
+	}
+
+	return lookup
+}
+
+func validateSubjectInclusions(inclusions [][]string, studentSubject map[string]string, exclusionLookup map[string]map[string]struct{}) error {
+	if err := validateInclusionsAgainstExclusions(inclusions, exclusionLookup); err != nil {
+		return err
+	}
+
+	for _, inclusionGroup := range inclusions {
+		seenSubjects := make(map[string]string)
+		for _, student := range inclusionGroup {
+			subject := studentSubject[student]
+			if firstStudent, exists := seenSubjects[subject]; exists {
+				return fmt.Errorf("students %q and %q are required to be together but both belong to subject %q", firstStudent, student, subject)
+			}
+			seenSubjects[subject] = student
+		}
+	}
+
+	return nil
+}
+
+func validateInclusionsAgainstExclusions(inclusions [][]string, exclusionLookup map[string]map[string]struct{}) error {
+	for _, inclusionGroup := range inclusions {
+		for i := 0; i < len(inclusionGroup); i++ {
+			for j := i + 1; j < len(inclusionGroup); j++ {
+				if studentsConflict(inclusionGroup[i], inclusionGroup[j], exclusionLookup) {
+					return fmt.Errorf("students %q and %q are required to be together but are also listed in an exclusion group", inclusionGroup[i], inclusionGroup[j])
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func buildAssignmentUnits(students []string, inclusions [][]string, exclusionLookup map[string]map[string]struct{}) [][]string {
+	units := make([][]string, 0, len(students))
+	includedStudents := make(map[string]struct{}, len(students))
+
+	for _, inclusionGroup := range inclusions {
+		unit := slices.Clone(inclusionGroup)
+		units = append(units, unit)
+		for _, student := range inclusionGroup {
+			includedStudents[student] = struct{}{}
+		}
+	}
+
+	for _, student := range students {
+		if _, exists := includedStudents[student]; exists {
+			continue
+		}
+		units = append(units, []string{student})
+	}
+
+	rand.Shuffle(len(units), func(i, j int) {
+		units[i], units[j] = units[j], units[i]
+	})
+
+	sort.SliceStable(units, func(i, j int) bool {
+		iHasConstraints := unitHasExclusions(units[i], exclusionLookup)
+		jHasConstraints := unitHasExclusions(units[j], exclusionLookup)
+		if iHasConstraints != jHasConstraints {
+			return iHasConstraints
+		}
+
+		if len(units[i]) != len(units[j]) {
+			return len(units[i]) > len(units[j])
+		}
+
+		return false
+	})
+
+	return units
+}
+
+func unitHasExclusions(unit []string, exclusionLookup map[string]map[string]struct{}) bool {
+	for _, student := range unit {
+		if len(exclusionLookup[student]) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func studentsConflict(student string, otherStudent string, exclusionLookup map[string]map[string]struct{}) bool {
+	_, exists := exclusionLookup[student][otherStudent]
+	return exists
+}
+
+func flattenSubjectStudentsBySubject(subjectStudents map[string][]string) []string {
+	students := make([]string, 0)
+	for _, subjectGroup := range subjectStudents {
+		students = append(students, subjectGroup...)
+	}
+
+	return students
 }

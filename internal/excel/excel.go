@@ -60,9 +60,15 @@ func ReadExcelSubjectGroups(filename string) (*types.GroupingData, error) {
 		return nil, err
 	}
 
+	inclusions, err := getInclusions(f, flattenSubjectStudents(subjectStudents))
+	if err != nil {
+		return nil, err
+	}
+
 	data := &types.GroupingData{
 		SubjectStudents: subjectStudents,
 		Exclusions:      exclusions,
+		Inclusions:      inclusions,
 	}
 
 	return data, nil
@@ -184,22 +190,29 @@ func getSubjectsStudents(f *excelize.File) (map[string][]string, error) {
 
 // Read exclusions from the 2nd sheet of Excel file
 func getExclusions(f *excelize.File, knownStudents []string) ([][]string, error) {
+	return getConstraintGroups(f, 1, knownStudents, "exclusion")
+}
 
-	// If there is no 2nd sheet assume no exlusions
-	if f.GetSheetName(1) == "" {
+// Read inclusions from the 3rd sheet of Excel file
+func getInclusions(f *excelize.File, knownStudents []string) ([][]string, error) {
+	return getConstraintGroups(f, 2, knownStudents, "inclusion")
+}
+
+func getConstraintGroups(f *excelize.File, sheetIndex int, knownStudents []string, constraintName string) ([][]string, error) {
+
+	// If the sheet is missing, assume no constraints of that type.
+	if f.GetSheetName(sheetIndex) == "" {
 		return make([][]string, 0), nil
 	}
 
-	columns, err := f.GetCols(f.GetSheetName(1))
+	columns, err := f.GetCols(f.GetSheetName(sheetIndex))
 	if err != nil {
 		return nil, fmt.Errorf("%s %s\n%s", errParsingExcelFile, err, errNotifyDeveloper)
 	}
 
 	issues := &validationErrors{}
-	knownStudentsExact := make(map[string]struct{}, len(knownStudents))
 	knownStudentsNormalized := make(map[string]string, len(knownStudents))
 	for _, student := range knownStudents {
-		knownStudentsExact[student] = struct{}{}
 		knownStudentsNormalized[strings.ToLower(student)] = student
 	}
 
@@ -214,7 +227,7 @@ func getExclusions(f *excelize.File, knownStudents []string) ([][]string, error)
 			name := trimmedValue(rawName)
 
 			if rawName != "" && rawName != name {
-				issues.add("exclusion name at %s contains leading or trailing spaces", cell)
+				issues.add("%s name at %s contains leading or trailing spaces", constraintName, cell)
 			}
 
 			if name == "" {
@@ -223,22 +236,22 @@ func getExclusions(f *excelize.File, knownStudents []string) ([][]string, error)
 
 			canonicalName, exists := knownStudentsNormalized[strings.ToLower(name)]
 			if !exists {
-				issues.add("exclusion name %q at %s does not match any student from the first sheet", name, cell)
+				issues.add("%s name %q at %s does not match any student from the first sheet", constraintName, name, cell)
 				continue
 			}
 
 			if canonicalName != name {
-				issues.add("exclusion name %q at %s must match the first-sheet student name exactly: %q", name, cell, canonicalName)
+				issues.add("%s name %q at %s must match the first-sheet student name exactly: %q", constraintName, name, cell, canonicalName)
 				continue
 			}
 
 			if first, exists := seenInGroup[name]; exists {
-				issues.add("student %q is listed twice in the same exclusion group at %s and %s", name, first.cell, cell)
+				issues.add("student %q is listed twice in the same %s group at %s and %s", name, constraintName, first.cell, cell)
 				continue
 			}
 
 			if first, exists := seenAcrossGroups[name]; exists {
-				issues.add("student %q appears in more than one exclusion group at %s and %s", name, first.cell, cell)
+				issues.add("student %q appears in more than one %s group at %s and %s", name, constraintName, first.cell, cell)
 				continue
 			}
 
@@ -276,9 +289,15 @@ func ReadExcelNumGroups(filename string) (*types.GroupingData, error) {
 		return nil, err
 	}
 
+	inclusions, err := getInclusions(f, students)
+	if err != nil {
+		return nil, err
+	}
+
 	data := &types.GroupingData{
 		Students:   students,
 		Exclusions: exclusions,
+		Inclusions: inclusions,
 	}
 
 	return data, nil
